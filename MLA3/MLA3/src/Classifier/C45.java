@@ -8,7 +8,7 @@ import java.util.Collections;
 
 
 //this implementation of C4.5 is dynamically modelled to work with 
-//any data set with four attributes and three classes
+//any data set 
 //
 public class C45 {
 	
@@ -24,7 +24,10 @@ public class C45 {
 	private String[][] Training;
 	private String[][] Testing;
 
+	private String[][] workingSet;
+	
 	private int trainingCases;
+	private int workingCases;
 	private int testingCases;
 	private ArrayList<Integer> ListShuffle = new ArrayList<Integer>();
 	
@@ -32,9 +35,14 @@ public class C45 {
 	private int numClasses;
 	private ArrayList<String> attributes = new ArrayList<String>();
 
+	private double maxEnt;
 	private double systemEnt;
 	
-	private String[][] minmax;
+	private boolean t_flag=false;
+	double tolerance = 0.0;
+	private double tempthresh =0.0;
+	private double[][] thresholds = new double[2][100];
+	private int tcount;
 	
 	public C45(String csvLocation) throws IOException
 	{
@@ -43,17 +51,26 @@ public class C45 {
 		DataSplit();
 		systemEnt = systemEntropy();
 		
-		entropy();
+	//while(workingSet != null)
+	//{
+		for(int i =0; i<numatt; i++)
+		{
+			Optimizer(i);
+		}
+	//}
 
 	}
 	
-	private int count(String val, String att)
+	
+	//method counts the number of instances of a certain class within the working set
+	// e.g num BarnOwls = 31
+	private int count(int clas)
 	{
 		int counter =0;
-		int col = attributes.indexOf(att);
+		int att = numatt;
 			for(int i = 0; i< trainingCases; i++)
 			{
-				if(Training[col][i].equals(val))
+				if(workingSet[att][i].equals(classes.get(clas)))
 				{
 					counter++;
 				}
@@ -61,14 +78,16 @@ public class C45 {
 		return counter;
 	}
 	
+	
+	// given a threshold (val) count the number of cases 
+	// of a certain class that is less than the threshold
 	private int count4threshold(int clas, int att, double val)
 	{
 		int counter =0;
-		
-			for(int i = 0; i< trainingCases; i++)
+			for(int i = 0; i< workingCases; i++)
 			{
-				if (Training[numatt][i].equals(classes.get(clas))){
-				if(Double.parseDouble(Training[att][i]) <= val)
+				if (workingSet[numatt][i].equals(classes.get(clas))){
+				if(Double.parseDouble(workingSet[att][i]) <= val)
 				{
 					counter++;
 				}
@@ -77,103 +96,197 @@ public class C45 {
 		return counter;
 	}
 	
+	private int countAbovethreshold(int clas, int att, double val)
+	{
+		int counter =0;
+			for(int i = 0; i< workingCases; i++)
+			{
+				if (workingSet[numatt][i].equals(classes.get(clas))){
+				if(Double.parseDouble(workingSet[att][i]) > val)
+				{
+					counter++;
+				}
+				}
+			}
+		return counter;
+	}
+	
+	
+	
+	// at a certain node calculate the 
+	// total entropy of the remaining cases
 	private double systemEntropy()
 	{
 		double ent=0.0;
 		for(int i =0; i<numClasses;i++)
 		{
-			double x = count(classes.get(i), attributes.get(numatt));
-			ent = ent+ (-x/trainingCases)*(logb2(x/trainingCases));
+			double x = count(i);
+			ent = ent+ (-x/workingCases)*(logb2(x/workingCases));
 		}
 		
-		double max = -logb2(((double)trainingCases/numClasses)/trainingCases);
-		ent = ent/max;
-		System.out.println(ent);
+		maxEnt = -logb2(((double)workingCases/numClasses)/workingCases);
+		ent = ent/maxEnt;
+		//System.out.println("System Entropy: " +String.format( "%.4f", ent));
 		return ent;
 	}
 	
-	private void average(int att)
-	{
-		double sm=0;
-		double av=0;
-	 for(int clas =0; clas<numClasses; clas++)
-	 {
-		for(int i=0; i<trainingCases; i++)
-		{
-			if(Training[numatt][i].equals(classes.get(clas)))
-			{
-				sm = sm + Double.parseDouble(Training[att][i]);
-			}
-		}
-		String cl= classes.get(clas);
-		String s = attributes.get(att);
-		int c = count(cl,attributes.get(numatt)); //counting total number of instances of a class, numatt =5(fifth column is type/class)
-		av = sm/c;
-		System.out.println("For class: " + cl+ " the avereage " + s + " is " +av);
-	  }	
-	} 
 	
 	
-	private double minmax(int clas, int att)
+	// calculates the max value of each 
+	// attribute for a given class
+	private double max(int clas, int att)
 	{
-		minmax = new String[3][numClasses];
 		double initmax = 0.0;
 		double tempmax =0.0;
-		double initmin = 50000.0;
-		double tempmin =0.0;
 		double max = 0.0;
-		double min = 0.0;
-		 //for(int clas =0; clas<numClasses; clas++)
-		// {
-				//initmax = 0.0;
-				//initmin = 50000.0;
-		int num =count(classes.get(clas), classes.get(numatt));
+		int num =count(clas);
 			for(int i=0; i<num; i++)
 			{
-			  if(Training[numatt][i].equals(classes.get(clas)))
+			  if(workingSet[numatt][i].equals(classes.get(clas)))
 			  {
-				if((tempmax = Double.parseDouble(Training[att][i]))> initmax)
+				if((tempmax = Double.parseDouble(workingSet[att][i]))> initmax)
 				{
 					max = tempmax;
 					initmax = max;
 				}
-				if((tempmin = Double.parseDouble(Training[att][i]))< initmin)
-				{
-					min= tempmin;
-					initmin =min;
-				}
+				
 			  }
 				
 			}
-			System.out.println("For class: " + classes.get(clas) +" Attribute: " + attributes.get(att) 
-					+ " MIN: " + min+ " MAX: " +max);
 			return max;
-		 
 	}
-
 	
-	private void entropy()
+	// finds minimum infogain at a certain node
+	private void Optimizer(int att)
 	{
-		for(int i=0; i<numatt; i++)
-		{
-			double ent =0.0;
-			for(int j=0; j<numClasses; j++)
+		
+		t_flag = false;
+		double entropyt = 0.0;
+		double entropyf =0.0;
+		double entf =0.0;
+		double infogain =0.0;
+		double tempinfo=0.0;
+		double bestinfo =0.0;
+		double bestthresh =0.0;
+		double t = 0.0;
+		int timeout=0;
+
+		for(int i=0; i<numClasses; i++) // check if optimal info can be found at threshold = max val of att for some class i
+		{	
+			t=max(i,att);
+			entropyt = entropy(t, att);
+			entropyf = entropyi(t,att);
+			infogain =infoGain(att, t, entropyt, entropyf);
+			if(infogain> bestinfo)
 			{
-				
-				double threshold = minmax(j,i);
-				
-				
-				int numCasesThresh = count4threshold(j,i,threshold);
-				double total= count(classes.get(j), attributes.get(numatt));
-				if(numCasesThresh!= 0){
-				ent = ent+ (-numCasesThresh/total)*(logb2(numCasesThresh/total));
-				System.out.println(numCasesThresh);
-				}
-				
-				System.out.println("For class: " + classes.get(j)+" the entropy of instances with " + attributes.get(i)+ " less than " + threshold + " is " + String.valueOf(ent));
+				bestinfo = infogain;
 			}
 			
-		}  
+		}
+		tempinfo= bestinfo;
+			while(bestinfo< 1 && timeout<200)
+			{
+				t= threshold(att);
+				entropyf = entropyi(t,att);
+				entropyt = entropy(t, att);
+				bestinfo =infoGain(att, t, entropyt, entropyf);
+				if(bestinfo> tempinfo)
+				{
+					tempinfo= bestinfo;
+					bestthresh = t;
+				}
+				timeout++;
+			}
+			
+			System.out.println("*********best info Gain is " + String.format( "%.4f",tempinfo) 
+					+ " for " + attributes.get(att));
+			System.out.println(" at threshold " + bestthresh
+					+ " for " );
+	}
+	
+
+	// Given a threshold and an attribute this method
+	// gets the total number of instances below the given threshold
+	// and then finds the number of cases of a certain class below a threshold
+	// and hence calculates the entropy
+	// -(LEbelowThresh/totalBelowThresh)*logb2(LEbelowThresh/totalBelowThresh)-(BObelowTresh/totalBelowThresh)*logb2(BObelowThresh/totalBelowThresh)-(SObelowThresh/totalBelowThresh)*logb2(SObelowThresh/totalBelowThresh)-
+	private double entropy(double threshold, int att)
+	{
+		double ent =0.0;
+		int i = att;
+			for(int j=0; j<numClasses; j++)
+			{	
+			  double total =0.0;
+				for(int tot=0; tot<numClasses; tot++)
+				{
+					total+= count4threshold(tot,i,threshold); //all instances below threshold
+				}
+				int numCasesThresh = count4threshold(j,i,threshold);
+				//System.out.println("class: " + classes.get(j) + " below thresh: " + numCasesThresh );
+				//System.out.println("total below thresh: " + total);
+				if(numCasesThresh!= 0)
+				{
+					
+					ent = ent+ (-numCasesThresh/total)*(logb2(numCasesThresh/total));
+				}
+				
+			}
+				ent = ent/maxEnt;
+				//System.out.println("entropy t : " + ent + " @ thresh " + threshold );
+				return ent;
+	}
+	
+	private double entropyi(double threshold, int att)
+	{
+		double ent =0.0;
+		int i = att;
+			for(int j=0; j<numClasses; j++)
+			{	
+			  double total =0.0;
+				for(int tot=0; tot<numClasses; tot++)
+				{
+					total+= countAbovethreshold(tot,i,threshold);
+				}
+				
+				int numCasesThresh = countAbovethreshold(j,i,threshold);
+				//System.out.println("class: " + classes.get(j) + " above thresh: " + numCasesThresh );
+				//System.out.println("total above thresh: " + total);
+				if(numCasesThresh> 0)
+				{
+					ent = ent+ (-numCasesThresh/total)*(logb2(numCasesThresh/total));
+				}
+				
+			}
+			
+				ent = ent/maxEnt;
+				//System.out.println("entropy f : " + ent + " @ thresh " + threshold);
+				return ent;
+	}
+	
+	// to Optimize the threshold
+	private double threshold(int att)
+	{
+		double initmax = 0.0;
+		double threshmax=0.0;
+		double threshold=0.0;
+		if(!t_flag)
+		{
+		for(int i=0; i<numClasses; i++)
+		{
+			threshold = max(i,att);
+			if( threshold>initmax)
+			{
+				threshmax = threshold; 	// find absolute max value for given attribute
+				initmax=threshold;
+			}													
+		}
+		tempthresh= threshmax;
+		tolerance = threshmax/200;	//reduction of 0.5 percent	
+		}
+		t_flag = true;
+		// keep reducing threshold until Optimizer function stops it
+		tempthresh = tempthresh - tolerance;
+		return tempthresh;
 	}
 	
 	private double logb2(double n)
@@ -182,9 +295,21 @@ public class C45 {
 		return x;
 	}
 	
-	private void infoGain()
+	private double infoGain(int att, double threshold, double entropyt, double entropyf)
 	{
+		int numCasesLess=0;
+		int numCasesG8r =0;
+		for( int clas =0; clas<numClasses; clas++)
+		{
+		numCasesLess += count4threshold(clas, att, threshold);
+		numCasesG8r += countAbovethreshold(clas, att, threshold);
+		}
 		
+		double ent =systemEntropy();
+		double IG;
+		IG = (ent-(((double)numCasesLess/workingCases)*entropyt)-(((double)numCasesG8r/workingCases)*entropyf));
+		//System.out.println("threshold: " + threshold + " numCases less: " + numCasesLess +" working cases: " + workingCases +"numCases above:" + numCasesG8r +" entropy t: " + entropyt +" entropy f: " + entropyf +" Information Gain: " + String.format( "%.4f",IG));
+		return IG;
 	}
 
 	
@@ -288,6 +413,9 @@ public class C45 {
 			}
 		}
 		
+		workingSet = Training;							//working set changes at each node
+		workingCases = trainingCases;
+		
 		// randomly assign cases to testing data
 		for(int split = trainingCases; split <numCases; split++)	//+1 header row
 		{
@@ -320,73 +448,25 @@ public class C45 {
 		}	
 		
 		}
-	
-	// to Optimize the threshold
-	private void threshold(int att)
+	private void average(int att)
 	{
-		/*
-		double gap = 0.0;
-		double max =0.0;
-		for(int clas =0; clas <numClasses; clas++)
+		double sm=0;
+		double av=0;
+	 for(int clas =0; clas<numClasses; clas++)
+	 {
+		for(int i=0; i<trainingCases; i++)
 		{
-			for(int clas1 =1; clas1<numClasses;clas1++)
+			if(Training[numatt][i].equals(classes.get(clas)))
 			{
-				if(clas==1)
-				{ int place1=0; }
-				
-			if(Double.parseDouble(minmax[1][clas]) > Double.parseDouble(minmax[2][clas-1]))
-			{
-				gap=Double.parseDouble(minmax[1][clas]) - Double.parseDouble(minmax[2][clas-1]);
-				if(gap>max)
-				{
-					max=gap;
-				}
-			}
-			if(gap>1)
-			{
-				System.out.println("threshold:" +gap);
+				sm = sm + Double.parseDouble(Training[att][i]);
 			}
 		}
-	}*/
-		int attsec = att*numClasses;
-		for(int clas=attsec; clas<(numClasses+attsec); clas++)
-		{
-			int i=attsec;
-			while(i<numClasses)
-			{
-				if(i<clas)
-				{
-					System.out.println(clas + " 3and "+ i);
-					if(Double.parseDouble(minmax[1][clas]) > Double.parseDouble(minmax[2][i]))
-					{
-						
-					}
-					i++;
-				}
-				if(clas<i)
-				{
-					System.out.println(clas +" 2and "+ i);
-					if(Double.parseDouble(minmax[1][clas]) > Double.parseDouble(minmax[2][i]) )
-					{
-						
-					
-					}
-					i++;
-				}		
-				if(i==clas)
-				{
-					i++;
-					System.out.println(clas +" 1and "+ i);
-					if((i!=numClasses) && Double.parseDouble(minmax[1][clas]) > Double.parseDouble(minmax[2][i]))
-					{
-						
-					}
-					i++;
-				}
+		String cl= classes.get(clas);
+		String s = attributes.get(att);
+		int c = count(clas); //counting total number of instances of a class, numatt =5(fifth column is type/class)
+		av = sm/c;
+		System.out.println("For class: " + cl+ " the avereage " + s + " is " +av);
+	  }	
+	} 
 
-				System.out.println(i);
-				
-			}
-		}
-	}
 }
